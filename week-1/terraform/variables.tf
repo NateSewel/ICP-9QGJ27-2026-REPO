@@ -16,13 +16,13 @@ variable "environment" {
 variable "instance_type" {
   description = "EC2 instance type"
   type        = string
-  default     = "t2.micro"  # Free tier eligible
+  default     = "t3.micro" # Free tier eligible
 }
 
 variable "ecr_repository_url" {
   description = "ECR repository URL for Docker image"
   type        = string
-  default     = ""  # Will be auto-populated if empty
+  default     = "" # Will be auto-populated if empty
 }
 
 variable "docker_image_tag" {
@@ -40,5 +40,5 @@ variable "use_elastic_ip" {
 variable "allowed_ssh_cidr" {
   description = "CIDR block allowed to SSH into EC2 instance"
   type        = list(string)
-  default     = ["0.0.0.0/0"]  # Change this to your IP for better security
+  default     = ["0.0.0.0/0"] # Change this to your IP for better security
 }

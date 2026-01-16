@@ -4,7 +4,7 @@
 
 terraform {
   required_version = ">= 1.0"
-  
+
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -16,7 +16,7 @@ terraform {
 # Provider Configuration
 provider "aws" {
   region = var.aws_region
-  
+
   default_tags {
     tags = {
       Project     = "DevOps-Internship"
@@ -120,7 +120,7 @@ resource "aws_security_group" "app_server" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]  # In production, restrict this to your IP
+    cidr_blocks = ["0.0.0.0/0"] # In production, restrict this to your IP
   }
 
   # Outbound internet access
@@ -215,8 +215,8 @@ resource "aws_key_pair" "deployer" {
 locals {
   user_data = templatefile("${path.module}/user-data.sh", {
     ecr_repository_url = var.ecr_repository_url != "" ? var.ecr_repository_url : "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.aws_region}.amazonaws.com/devops-internship/hello-world"
-    aws_region        = var.aws_region
-    docker_image_tag  = var.docker_image_tag
+    aws_region         = var.aws_region
+    docker_image_tag   = var.docker_image_tag
   })
 }
 
@@ -224,8 +224,8 @@ locals {
 resource "aws_instance" "app_server" {
   ami                    = data.aws_ami.amazon_linux_2.id
   instance_type          = var.instance_type
-  key_name              = aws_key_pair.deployer.key_name
-  subnet_id             = aws_subnet.public.id
+  key_name               = aws_key_pair.deployer.key_name
+  subnet_id              = aws_subnet.public.id
   vpc_security_group_ids = [aws_security_group.app_server.id]
   iam_instance_profile   = aws_iam_instance_profile.ec2_profile.name
 

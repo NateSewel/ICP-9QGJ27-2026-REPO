@@ -59,7 +59,7 @@ output "aws_region" {
 
 output "deployment_summary" {
   description = "Summary of the deployment"
-  value = <<-EOT
+  value       = <<-EOT
     
     Instance ID:       ${aws_instance.app_server.id}
     Public IP:         ${var.use_elastic_ip ? aws_eip.app_server[0].public_ip : aws_instance.app_server.public_ip}
