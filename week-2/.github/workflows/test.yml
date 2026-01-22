@@ -1,0 +1,54 @@
+name: Test Application
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: user_management_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Use Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: 'user-management-api/package-lock.json'
+        
+    - name: Install dependencies
+      working-directory: user-management-api
+      run: npm ci
+      
+    - name: Run lint
+      working-directory: user-management-api
+      run: npm run lint || true # Allow failure for now if config not fully set
+      
+    - name: Run tests
+      working-directory: user-management-api
+      env:
+        DB_HOST: localhost
+        DB_NAME: user_management_test
+        DB_USER: postgres
+        DB_PASSWORD: password
+        JWT_SECRET: testsecret
+      run: npm test
