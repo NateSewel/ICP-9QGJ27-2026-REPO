@@ -6,8 +6,8 @@
 set -e  # Exit on error
 
 echo "╔════════════════════════════════════════════════════════════════╗"
-echo "║     DevOps Internship Repository Setup                        ║"
-echo "║     InternCareer Path - ICP-9QGJ27-2026                       ║"
+echo "║     DevOps Internship Repository Setup                         ║"
+echo "║     InternCareer Path - ICP-9QGJ27-2026                        ║"
 echo "╚════════════════════════════════════════════════════════════════╝"
 echo ""
 
@@ -238,11 +238,11 @@ cat > README.md << 'EOF'
 **Repository ID:** ICP-9QGJ27-2026-REPO  
 **Duration:** 6 Weeks
 
-## 📋 About This Repository
+## About This Repository
 
 This repository contains all weekly tasks and projects for the DevOps internship program at InternCareer Path.
 
-## 📁 Structure
+## Structure
 
 - `week-1/` - Foundation & Setup
 - `week-2/` - Core Concepts
@@ -251,12 +251,12 @@ This repository contains all weekly tasks and projects for the DevOps internship
 - `week-5/` - Production Readiness
 - `week-6/` - Capstone Project
 
-## 🚀 Quick Links
+##  Quick Links
 
 - [Week 1 Documentation](week-1/README.md)
 - [GitHub Actions](.github/workflows/)
 
-## 📞 Contact
+##  Contact
 
 **Nathaniel Isewede**
 - LinkedIn: [Your Profile](https://linkedin.com/in/yourprofile)
@@ -283,12 +283,12 @@ print_success "Created initial commit"
 # Summary
 echo ""
 echo "╔════════════════════════════════════════════════════════════════╗"
-echo "║                  Setup Complete! 🎉                            ║"
+echo "║                  Setup Complete!                               ║"
 echo "╚════════════════════════════════════════════════════════════════╝"
 echo ""
 print_info "Repository structure created successfully!"
 echo ""
-echo "📁 Directory: $(pwd)"
+echo " Directory: $(pwd)"
 echo ""
 echo "Next steps:"
 echo "1. Create a new repository on GitHub named 'ICP-9QGJ27-2026-REPO'"
@@ -301,6 +301,6 @@ echo "3. Add your actual code files to the appropriate directories"
 echo "4. Update README.md files with your information"
 echo "5. Complete Week 1 tasks following the documentation"
 echo ""
-print_success "Happy coding! 🚀"
+print_success "Happy coding!"
 echo ""
 echo "#InternCareerPath #DevOps"
