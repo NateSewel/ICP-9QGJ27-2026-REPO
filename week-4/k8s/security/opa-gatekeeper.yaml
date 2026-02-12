@@ -1,0 +1,38 @@
+# OPA Gatekeeper ConstraintTemplate
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8srestrictedsecuritycontext
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRestrictedSecurityContext
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srestrictedsecuritycontext
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.securityContext.runAsNonRoot
+          msg := sprintf("Container %v must run as non-root user", [container.name])
+        }
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.securityContext.readOnlyRootFilesystem
+          msg := sprintf("Container %v must have readOnlyRootFilesystem=true", [container.name])
+        }
+---
+# OPA Gatekeeper Constraint
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRestrictedSecurityContext
+metadata:
+  name: restricted-security-context
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    namespaces:
+      - curadocs
+  parameters: {}

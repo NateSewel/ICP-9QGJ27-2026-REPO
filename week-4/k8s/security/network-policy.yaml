@@ -1,0 +1,165 @@
+---
+# Network Policies for FastAPI Application
+# Week 4: Security Hardening
+# Implements zero-trust networking with explicit allow rules
+
+# Default Deny All Ingress Traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+  namespace: curadocs
+  labels:
+    intern-id: ICP-9QGJ27-2026
+    week: "4"
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+
+---
+# Allow Ingress to FastAPI from LoadBalancer
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-fastapi-ingress
+  namespace: curadocs
+spec:
+  podSelector:
+    matchLabels:
+      app: fastapi-app
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow traffic from LoadBalancer/Ingress
+  - from:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8000
+  
+  # Allow traffic from within the same namespace
+  - from:
+    - podSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8000
+
+---
+# Allow Prometheus to Scrape Metrics
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scraping
+  namespace: curadocs
+spec:
+  podSelector:
+    matchLabels:
+      app: fastapi-app
+  policyTypes:
+  - Ingress
+  ingress:
+  # Allow Prometheus from monitoring namespace
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: monitoring
+      podSelector:
+        matchLabels:
+          app: prometheus
+    ports:
+    - protocol: TCP
+      port: 8000  # Metrics endpoint
+
+---
+# Default Deny All Egress Traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+  namespace: curadocs
+spec:
+  podSelector: {}
+  policyTypes:
+  - Egress
+
+---
+# Allow Egress for FastAPI Pods
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-fastapi-egress
+  namespace: curadocs
+spec:
+  podSelector:
+    matchLabels:
+      app: fastapi-app
+  policyTypes:
+  - Egress
+  egress:
+  # Allow DNS resolution
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+  
+  # Allow HTTPS to external services
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 443
+  
+  # Allow HTTP to external services (if needed)
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 80
+  
+  # Allow database connections (adjust as needed)
+  # - to:
+  #   - podSelector:
+  #       matchLabels:
+  #         app: postgresql
+  #   ports:
+  #   - protocol: TCP
+  #     port: 5432
+
+---
+# Network Policy for Monitoring Namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-monitoring-egress
+  namespace: monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app: prometheus
+  policyTypes:
+  - Egress
+  egress:
+  # Allow Prometheus to scrape all namespaces
+  - to:
+    - namespaceSelector: {}
+    ports:
+    - protocol: TCP
+      port: 8000
+    - protocol: TCP
+      port: 9090
+  
+  # Allow DNS
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          name: kube-system
+    ports:
+    - protocol: UDP
+      port: 53

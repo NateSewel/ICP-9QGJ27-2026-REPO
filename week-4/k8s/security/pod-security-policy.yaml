@@ -1,0 +1,288 @@
+---
+# Pod Security Standards for Kubernetes 1.25+
+# Week 4: Security Hardening
+# Note: PodSecurityPolicy is deprecated in K8s 1.25+
+# Using Pod Security Standards (PSS) instead
+
+# Apply Restricted Pod Security Standard to curadocs namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: curadocs
+  labels:
+    name: curadocs
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+    intern-id: ICP-9QGJ27-2026
+
+---
+# Apply Baseline Pod Security Standard to monitoring namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: monitoring
+  labels:
+    name: monitoring
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
+
+---
+# OPA Gatekeeper ConstraintTemplate (Optional - Advanced)
+# Requires OPA Gatekeeper to be installed
+# kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/master/deploy/gatekeeper.yaml
+
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8srestrictedsecuritycontext
+  annotations:
+    description: "Enforces restricted security context for pods"
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRestrictedSecurityContext
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srestrictedsecuritycontext
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.securityContext.runAsNonRoot
+          msg := sprintf("Container %v must run as non-root user", [container.name])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.securityContext.readOnlyRootFilesystem
+          msg := sprintf("Container %v must have readOnlyRootFilesystem=true", [container.name])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          container.securityContext.allowPrivilegeEscalation
+          msg := sprintf("Container %v must have allowPrivilegeEscalation=false", [container.name])
+        }
+
+        violation[{"msg": msg}] {
+          container := input.review.object.spec.containers[_]
+          not container.securityContext.capabilities
+          msg := sprintf("Container %v must drop ALL capabilities", [container.name])
+        }
+
+---
+# OPA Gatekeeper Constraint
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRestrictedSecurityContext
+metadata:
+  name: restricted-security-context
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    namespaces:
+      - curadocs
+  parameters: {}
+
+---
+# Security Context Constraints (for documentation)
+# These are the security standards enforced on all pods
+
+# RESTRICTED SECURITY CONTEXT (Production workloads)
+# spec:
+#   securityContext:
+#     runAsNonRoot: true
+#     runAsUser: 10001
+#     fsGroup: 10001
+#     seccompProfile:
+#       type: RuntimeDefault
+#   containers:
+#   - name: app
+#     securityContext:
+#       allowPrivilegeEscalation: false
+#       readOnlyRootFilesystem: true
+#       runAsNonRoot: true
+#       runAsUser: 10001
+#       capabilities:
+#         drop:
+#         - ALL
+
+---
+# ResourceQuota for namespace
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: curadocs-quota
+  namespace: curadocs
+spec:
+  hard:
+    requests.cpu: "4"
+    requests.memory: 8Gi
+    limits.cpu: "8"
+    limits.memory: 16Gi
+    pods: "20"
+    services: "10"
+    persistentvolumeclaims: "5"
+    secrets: "20"
+    configmaps: "20"
+
+---
+# LimitRange for namespace
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: curadocs-limitrange
+  namespace: curadocs
+spec:
+  limits:
+    # Default limits for containers
+    - type: Container
+      default:
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest:
+        cpu: 100m
+        memory: 128Mi
+      max:
+        cpu: "2"
+        memory: 2Gi
+      min:
+        cpu: 50m
+        memory: 64Mi
+
+    # Limits for pods
+    - type: Pod
+      max:
+        cpu: "4"
+        memory: 4Gi
+      min:
+        cpu: 50m
+        memory: 64Mi
+
+    # Limits for PersistentVolumeClaims
+    - type: PersistentVolumeClaim
+      max:
+        storage: 10Gi
+      min:
+        storage: 1Gi
+
+---
+# Secret for storing sensitive application data
+apiVersion: v1
+kind: Secret
+metadata:
+  name: fastapi-secrets
+  namespace: curadocs
+  labels:
+    app: fastapi-app
+type: Opaque
+stringData:
+  # Database credentials (example)
+  database-url: "postgresql://user:password@postgres:5432/dbname"
+
+  # API keys (example)
+  api-key: "your-api-key-here"
+
+  # JWT secret (example)
+  jwt-secret: "your-jwt-secret-here"
+
+---
+# External Secret (if using AWS Secrets Manager)
+# Requires External Secrets Operator
+apiVersion: external-secrets.io/v1beta1
+kind: SecretStore
+metadata:
+  name: aws-secrets-manager
+  namespace: curadocs
+spec:
+  provider:
+    aws:
+      service: SecretsManager
+      region: us-east-1
+      auth:
+        jwt:
+          serviceAccountRef:
+            name: external-secrets-sa
+
+---
+# External Secret mapping
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: fastapi-external-secrets
+  namespace: curadocs
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: aws-secrets-manager
+    kind: SecretStore
+  target:
+    name: fastapi-aws-secrets
+    creationPolicy: Owner
+  data:
+    - secretKey: database-url
+      remoteRef:
+        key: /fastapi/production/database-url
+    - secretKey: api-key
+      remoteRef:
+        key: /fastapi/production/api-key
+    - secretKey: jwt-secret
+      remoteRef:
+        key: /fastapi/production/jwt-secret
+
+---
+# NetworkPolicy - Allow DNS
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: curadocs
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+
+---
+# Pod Security Policy (Deprecated but included for reference)
+# Note: This is only for K8s versions before 1.25
+# apiVersion: policy/v1beta1
+# kind: PodSecurityPolicy
+# metadata:
+#   name: restricted
+#   annotations:
+#     seccomp.security.alpha.kubernetes.io/allowedProfileNames: 'runtime/default'
+#     apparmor.security.beta.kubernetes.io/allowedProfileNames: 'runtime/default'
+# spec:
+#   privileged: false
+#   allowPrivilegeEscalation: false
+#   requiredDropCapabilities:
+#   - ALL
+#   volumes:
+#   - 'configMap'
+#   - 'emptyDir'
+#   - 'projected'
+#   - 'secret'
+#   - 'downwardAPI'
+#   - 'persistentVolumeClaim'
+#   hostNetwork: false
+#   hostIPC: false
+#   hostPID: false
+#   runAsUser:
+#     rule: 'MustRunAsNonRoot'
+#   seLinux:
+#     rule: 'RunAsAny'
+#   fsGroup:
+#     rule: 'RunAsAny'
+#   readOnlyRootFilesystem: true

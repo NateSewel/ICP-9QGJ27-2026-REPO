@@ -1,0 +1,91 @@
+---
+# Horizontal Pod Autoscaler for FastAPI Application
+# Week 4: Performance Optimization
+# This HPA automatically scales pods based on CPU and memory utilization
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: fastapi-hpa
+  namespace: curadocs
+  labels:
+    app: fastapi-app
+    component: autoscaler
+    intern-id: ICP-9QGJ27-2026
+    week: "4"
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fastapi-app
+  
+  # Scaling boundaries
+  minReplicas: 2    # Minimum for high availability
+  maxReplicas: 10   # Maximum to prevent runaway costs
+  
+  # Scaling behavior
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Wait 5 minutes before scaling down
+      policies:
+      - type: Percent
+        value: 50                       # Scale down max 50% of current pods
+        periodSeconds: 60
+      - type: Pods
+        value: 2                        # Or max 2 pods at a time
+        periodSeconds: 60
+      selectPolicy: Min                 # Use the most conservative policy
+    
+    scaleUp:
+      stabilizationWindowSeconds: 0     # Scale up immediately
+      policies:
+      - type: Percent
+        value: 100                      # Double the pods if needed
+        periodSeconds: 30
+      - type: Pods
+        value: 4                        # Or add max 4 pods
+        periodSeconds: 30
+      selectPolicy: Max                 # Use the most aggressive policy
+  
+  # Metrics to monitor
+  metrics:
+  # CPU-based scaling
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70          # Scale when CPU > 70%
+  
+  # Memory-based scaling
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80          # Scale when Memory > 80%
+  
+  # Custom metric example (requires Prometheus Adapter)
+  # Uncomment when Prometheus Adapter is installed
+  # - type: Pods
+  #   pods:
+  #     metric:
+  #       name: http_requests_per_second
+  #     target:
+  #       type: AverageValue
+  #       averageValue: "1000"          # Scale when RPS > 1000
+
+---
+# PodDisruptionBudget to ensure availability during scaling
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: fastapi-pdb
+  namespace: curadocs
+  labels:
+    app: fastapi-app
+spec:
+  minAvailable: 1                       # Always keep at least 1 pod running
+  selector:
+    matchLabels:
+      app: fastapi-app

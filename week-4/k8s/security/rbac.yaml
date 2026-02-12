@@ -1,0 +1,196 @@
+---
+# RBAC Configuration for FastAPI Application
+# Week 4: Security - Role-Based Access Control
+
+# ServiceAccount for FastAPI Application
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: fastapi-sa
+  namespace: curadocs
+  labels:
+    app: fastapi-app
+    intern-id: ICP-9QGJ27-2026
+    week: "4"
+automountServiceAccountToken: true
+
+---
+# Role for FastAPI Application (Namespace-scoped)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: fastapi-role
+  namespace: curadocs
+rules:
+# Allow reading ConfigMaps for configuration
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list", "watch"]
+
+# Allow reading Secrets for credentials
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list"]
+
+# Allow reading own pod information
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+
+# Allow creating events for debugging
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch"]
+
+---
+# RoleBinding for FastAPI Application
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: fastapi-rolebinding
+  namespace: curadocs
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: fastapi-role
+subjects:
+- kind: ServiceAccount
+  name: fastapi-sa
+  namespace: curadocs
+
+---
+# ServiceAccount for Prometheus
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: prometheus-sa
+  namespace: monitoring
+  labels:
+    app: prometheus
+
+---
+# ClusterRole for Prometheus (needs cluster-wide access)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: prometheus-clusterrole
+rules:
+# Read nodes
+- apiGroups: [""]
+  resources: ["nodes", "nodes/metrics", "nodes/proxy"]
+  verbs: ["get", "list", "watch"]
+
+# Read pods
+- apiGroups: [""]
+  resources: ["pods", "pods/log"]
+  verbs: ["get", "list", "watch"]
+
+# Read services and endpoints
+- apiGroups: [""]
+  resources: ["services", "endpoints"]
+  verbs: ["get", "list", "watch"]
+
+# Read ingresses
+- apiGroups: ["networking.k8s.io"]
+  resources: ["ingresses"]
+  verbs: ["get", "list", "watch"]
+
+# Read config maps
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get"]
+
+# Read service monitors (if using Prometheus Operator)
+- apiGroups: ["monitoring.coreos.com"]
+  resources: ["servicemonitors", "podmonitors"]
+  verbs: ["get", "list", "watch"]
+
+---
+# ClusterRoleBinding for Prometheus
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: prometheus-clusterrolebinding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: prometheus-clusterrole
+subjects:
+- kind: ServiceAccount
+  name: prometheus-sa
+  namespace: monitoring
+
+---
+# ServiceAccount for Metrics Server
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: metrics-server
+  namespace: kube-system
+
+---
+# ClusterRole for Metrics Server
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: system:metrics-server
+rules:
+- apiGroups: [""]
+  resources: ["pods", "nodes", "nodes/stats", "namespaces"]
+  verbs: ["get", "list", "watch"]
+
+---
+# ClusterRoleBinding for Metrics Server
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: system:metrics-server
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:metrics-server
+subjects:
+- kind: ServiceAccount
+  name: metrics-server
+  namespace: kube-system
+
+---
+# ServiceAccount for External Secrets Operator (Optional)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: external-secrets-sa
+  namespace: curadocs
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::ACCOUNT_ID:role/external-secrets-role
+
+---
+# Role for External Secrets
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: external-secrets-role
+  namespace: curadocs
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  verbs: ["get", "list", "create", "update", "delete"]
+- apiGroups: ["external-secrets.io"]
+  resources: ["externalsecrets", "secretstores"]
+  verbs: ["get", "list", "watch"]
+
+---
+# RoleBinding for External Secrets
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: external-secrets-rolebinding
+  namespace: curadocs
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: external-secrets-role
+subjects:
+- kind: ServiceAccount
+  name: external-secrets-sa
+  namespace: curadocs

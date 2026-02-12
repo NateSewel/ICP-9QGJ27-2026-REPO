@@ -1,0 +1,210 @@
+---
+# cert-manager Configuration for SSL/TLS Certificates
+# Week 4: Security - Automated Certificate Management
+
+# Note: cert-manager must be installed first:
+# kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+
+# ClusterIssuer for Let's Encrypt Production
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    # Production Let's Encrypt server
+    server: https://acme-v02.api.letsencrypt.org/directory
+    
+    # Email for certificate expiration notifications
+    email: nathanielisewede@example.com  # Update with your email
+    
+    # Secret to store the account private key
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    
+    # ACME challenge solver configuration
+    solvers:
+    # HTTP-01 challenge solver
+    - http01:
+        ingress:
+          class: nginx
+
+---
+# ClusterIssuer for Let's Encrypt Staging (for testing)
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    # Staging Let's Encrypt server (for testing)
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: nathanielisewede@example.com
+    privateKeySecretRef:
+      name: letsencrypt-staging-account-key
+    solvers:
+    - http01:
+        ingress:
+          class: nginx
+
+---
+# Certificate for FastAPI Application
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: fastapi-tls
+  namespace: curadocs
+spec:
+  # Secret name where certificate will be stored
+  secretName: fastapi-tls-secret
+  
+  # Certificate duration and renewal
+  duration: 2160h  # 90 days
+  renewBefore: 720h  # 30 days before expiration
+  
+  # Subject information
+  subject:
+    organizations:
+    - InternCareerPath
+  
+  # Common name and DNS names
+  commonName: fastapi.example.com  # Update with your domain
+  dnsNames:
+  - fastapi.example.com
+  - www.fastapi.example.com
+  
+  # Issuer reference
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+    group: cert-manager.io
+  
+  # Private key configuration
+  privateKey:
+    algorithm: RSA
+    encoding: PKCS1
+    size: 2048
+  
+  # Certificate usages
+  usages:
+  - digital signature
+  - key encipherment
+
+---
+# Ingress with TLS for FastAPI
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fastapi-ingress
+  namespace: curadocs
+  annotations:
+    # cert-manager will automatically request certificate
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    
+    # NGINX ingress annotations
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    
+    # Security headers
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "X-Frame-Options: DENY";
+      more_set_headers "X-Content-Type-Options: nosniff";
+      more_set_headers "X-XSS-Protection: 1; mode=block";
+      more_set_headers "Strict-Transport-Security: max-age=31536000; includeSubDomains";
+    
+    # Rate limiting
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-connections: "10"
+spec:
+  ingressClassName: nginx
+  
+  tls:
+  - hosts:
+    - fastapi.example.com
+    - www.fastapi.example.com
+    secretName: fastapi-tls-secret  # Matches certificate secretName
+  
+  rules:
+  - host: fastapi.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: fastapi-service
+            port:
+              number: 80
+
+---
+# Certificate for Grafana
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: grafana-tls
+  namespace: monitoring
+spec:
+  secretName: grafana-tls-secret
+  duration: 2160h
+  renewBefore: 720h
+  subject:
+    organizations:
+    - InternCareerPath
+  commonName: grafana.example.com
+  dnsNames:
+  - grafana.example.com
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+    group: cert-manager.io
+
+---
+# Certificate for Prometheus
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: prometheus-tls
+  namespace: monitoring
+spec:
+  secretName: prometheus-tls-secret
+  duration: 2160h
+  renewBefore: 720h
+  subject:
+    organizations:
+    - InternCareerPath
+  commonName: prometheus.example.com
+  dnsNames:
+  - prometheus.example.com
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+    group: cert-manager.io
+
+---
+# Self-signed issuer for development/testing
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: selfsigned-issuer
+  namespace: curadocs
+spec:
+  selfSigned: {}
+
+---
+# Self-signed certificate for development
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: fastapi-selfsigned
+  namespace: curadocs
+spec:
+  secretName: fastapi-selfsigned-tls
+  duration: 8760h  # 1 year
+  renewBefore: 720h
+  commonName: fastapi-dev.local
+  dnsNames:
+  - fastapi-dev.local
+  - "*.fastapi-dev.local"
+  issuerRef:
+    name: selfsigned-issuer
+    kind: Issuer

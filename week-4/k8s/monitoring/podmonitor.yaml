@@ -1,0 +1,16 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: fastapi-podmonitor
+  namespace: curadocs
+  labels:
+    app: fastapi-app
+spec:
+  selector:
+    matchLabels:
+      app: fastapi-app
+  podMetricsEndpoints:
+  - port: http
+    path: /metrics
+    interval: 30s
+    scrapeTimeout: 10s

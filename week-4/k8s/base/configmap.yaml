@@ -1,0 +1,47 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fastapi-config
+  namespace: curadocs
+data:
+  app-settings.json: |
+    {
+      "app_name": "FastAPI Week 4 Optimized",
+      "version": "1.0.0",
+      "environment": "production",
+      "features": {
+        "metrics": true,
+        "tracing": true,
+        "caching": true
+      }
+    }
+  
+  logging.conf: |
+    [loggers]
+    keys=root,app
+    
+    [handlers]
+    keys=console
+    
+    [formatters]
+    keys=json
+    
+    [logger_root]
+    level=INFO
+    handlers=console
+    
+    [logger_app]
+    level=INFO
+    handlers=console
+    qualname=app
+    propagate=0
+    
+    [handler_console]
+    class=StreamHandler
+    level=INFO
+    formatter=json
+    args=(sys.stdout,)
+    
+    [formatter_json]
+    format={"time":"%(asctime)s","level":"%(levelname)s","message":"%(message)s"}
+    datefmt=%Y-%m-%dT%H:%M:%S

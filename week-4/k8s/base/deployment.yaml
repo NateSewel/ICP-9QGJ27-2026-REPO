@@ -1,0 +1,232 @@
+---
+# Optimized FastAPI Deployment
+# Week 4: Performance & Security Enhancements
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastapi-app
+  namespace: curadocs
+  labels:
+    app: fastapi-app
+    version: v1.0
+    intern-id: ICP-9QGJ27-2026
+    week: "4"
+  annotations:
+    # Prometheus scraping annotations
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8000"
+    prometheus.io/path: "/metrics"
+spec:
+  replicas: 2  # Initial replicas (HPA will manage scaling)
+  
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1        # Allow 1 extra pod during updates
+      maxUnavailable: 0  # Ensure zero downtime
+  
+  selector:
+    matchLabels:
+      app: fastapi-app
+  
+  template:
+    metadata:
+      labels:
+        app: fastapi-app
+        version: v1.0
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      # Use dedicated service account
+      serviceAccountName: fastapi-sa
+      
+      # Security context for the pod
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      
+      # Init container for database migrations or setup
+      initContainers:
+      - name: init-setup
+        image: busybox:1.36
+        command: ['sh', '-c', 'echo "Initializing application..." && sleep 2']
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 10001
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop:
+            - ALL
+      
+      containers:
+      - name: fastapi
+        # Update with your ECR image
+        image: <AWS_ACCOUNT_ID>.dkr.ecr.us-east-1.amazonaws.com/fastapi-app:latest
+        imagePullPolicy: Always
+        
+        ports:
+        - name: http
+          containerPort: 8000
+          protocol: TCP
+        
+        # Environment variables
+        env:
+        - name: ENVIRONMENT
+          value: "production"
+        - name: LOG_LEVEL
+          value: "info"
+        - name: WORKERS
+          value: "2"
+        - name: PORT
+          value: "8000"
+        # Database connection (if using)
+        # - name: DATABASE_URL
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: fastapi-secrets
+        #       key: database-url
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        - name: POD_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.podIP
+        
+        # Resource requests and limits
+        resources:
+          requests:
+            cpu: 100m      # Minimum CPU
+            memory: 128Mi  # Minimum memory
+          limits:
+            cpu: 500m      # Maximum CPU
+            memory: 512Mi  # Maximum memory
+        
+        # Liveness probe - restart if unhealthy
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          successThreshold: 1
+          failureThreshold: 3
+        
+        # Readiness probe - remove from service if not ready
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+            scheme: HTTP
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 3
+        
+        # Startup probe - for slow-starting applications
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 12  # 60 seconds total
+        
+        # Security context for container
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+          runAsUser: 10001
+          capabilities:
+            drop:
+            - ALL
+        
+        # Volume mounts
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+        - name: app-cache
+          mountPath: /app/.cache
+        - name: config
+          mountPath: /app/config
+          readOnly: true
+      
+      # Volumes
+      volumes:
+      - name: tmp
+        emptyDir: {}
+      - name: app-cache
+        emptyDir: {}
+      - name: config
+        configMap:
+          name: fastapi-config
+      
+      # Node affinity - prefer spreading across different nodes
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - fastapi-app
+              topologyKey: kubernetes.io/hostname
+      
+      # Tolerations for node taints (if any)
+      tolerations:
+      - key: "node.kubernetes.io/not-ready"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 300
+      - key: "node.kubernetes.io/unreachable"
+        operator: "Exists"
+        effect: "NoExecute"
+        tolerationSeconds: 300
+
+---
+# Updated Service with metrics annotations
+apiVersion: v1
+kind: Service
+metadata:
+  name: fastapi-service
+  namespace: curadocs
+  labels:
+    app: fastapi-app
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8000"
+    prometheus.io/path: "/metrics"
+spec:
+  type: LoadBalancer
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 3600
+  ports:
+  - port: 80
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  selector:
+    app: fastapi-app

@@ -1,0 +1,19 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: fastapi-servicemonitor
+  namespace: monitoring
+  labels:
+    app: fastapi-app
+    release: prometheus # Matches the Helm release name of kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app: fastapi-app
+  namespaceSelector:
+    matchNames:
+      - curadocs
+  endpoints:
+  - port: http
+    path: /metrics
+    interval: 30s

@@ -1,0 +1,62 @@
+name: Continuous Deployment
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  id-token: write # Required for OIDC
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: us-east-1
+      CLUSTER_NAME: cluster.k8s.local
+      KOPS_STATE_STORE: s3://s3-kops-nate247
+      ECR_REPOSITORY: fastapi-app
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image to Amazon ECR
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG -t $ECR_REGISTRY/$ECR_REPOSITORY:latest ./app
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:latest
+
+      - name: Setup KOps
+        run: |
+          curl -Lo kops https://github.com/kubernetes/kops/releases/download/$(curl -s https://api.github.com/repos/kubernetes/kops/releases/latest | grep tag_name | cut -d '"' -f 4)/kops-linux-amd64
+          chmod +x kops
+          sudo mv kops /usr/local/bin/
+
+      - name: Update Cluster
+        run: |
+          kops export kubecfg --admin --name ${{ env.CLUSTER_NAME }} --state ${{ env.KOPS_STATE_STORE }}
+          # Apply any changes to cluster configuration
+          kops update cluster --name ${{ env.CLUSTER_NAME }} --yes
+          kops rolling-update cluster --name ${{ env.CLUSTER_NAME }} --yes
+
+      - name: Deploy to Kubernetes
+        run: |
+          # Use kustomize to update the image tag
+          cd k8s/base
+          kustomize edit set image $ECR_REGISTRY/$ECR_REPOSITORY:$github.sha
+          kubectl apply -k .
+          kubectl rollout status deployment/fastapi-app -n curadocs
